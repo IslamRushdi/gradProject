@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "50886990490",
+    "project_id": "videocall-demo-dea45",
+    "storage_bucket": "videocall-demo-dea45.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50886990490:android:3bc23cfca79425494fdd23",
+        "android_client_info": {
+          "package_name": "com.example.webrtc_signaling_server"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "50886990490-sj5q8chfanr1iltihuhe7k3a2uskhp8r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBGFgNW0w10yaDiSA3NqHR4QXvlf8Nt0Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "50886990490-sj5q8chfanr1iltihuhe7k3a2uskhp8r.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
