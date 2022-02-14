@@ -7,9 +7,7 @@ import 'package:webrtc_signaling_server/shared/google_sign_in_provider.dart';
 
 import 'screens/blind_vs_volunteer_screen.dart';
 
-
-void main() async{
-
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 //  await Firebase.initializeApp();
 
@@ -23,13 +21,13 @@ class MyApp extends StatelessWidget {
     //  create: (context)=> GoogleSignInProvider(),
     //  child:
     return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          primarySwatch: Colors.blueGrey,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-        ),
-        home: BlindVSVolunteerScreen(),
-   //   ),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blueGrey,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: BlindVSVolunteerScreen(),
+      //   ),
     );
   }
 }

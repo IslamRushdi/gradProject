@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:conditional_builder_null_safety/conditional_builder_null_safety.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -37,12 +38,28 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
 
   late Socket socket;
 
+  AudioPlayer audioPlayer = AudioPlayer();
+  PlayerState playerState = PlayerState.PAUSED;
+  AudioCache? audioCache;
+  String path = 'app_running.mp3';
+  
+
+  playMusic() async {
+    await audioCache?.loop(path);
+  }
+
+  pauseMusic() async {
+    await audioPlayer.pause();
+  }
+
   @override
   dispose() {
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     socket.disconnect();
-
+    audioPlayer.release();
+    audioPlayer.dispose();
+    audioCache?.clearAll();
     super.dispose();
   }
 
@@ -53,7 +70,12 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
     _createPeerConnection().then((pc) {
       _peerConnection = pc;
     });
-
+    audioCache = AudioCache(fixedPlayer: audioPlayer);
+    audioPlayer.onPlayerStateChanged.listen((PlayerState s) {
+      setState(() {
+        playerState = s;
+      });
+    });
     // _getUserMedia();
     super.initState();
   }
@@ -87,59 +109,84 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
         // print("blindSdp: $blindSdp");
         //print("id: $_blindId");
         print('recieving sdp');
+
         if (!isBusy) {
-          showDialog(
+        playerState == PlayerState.PLAYING;
+        playMusic();
+        showDialog(
             context: context,
-            builder: (_) => AlertDialog(
-              backgroundColor: Colors.black,
-              content: Text(
-                'Blind User is Calling ...',
-                style: TextStyle(
-                  fontSize: 20.0,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              actions: [
-                CupertinoDialogAction(
-                  onPressed: () {
-                    isBusy = true;
-                    _setRemoteDescription(blindSdp);
-                    _createAnswer();
-                    changer = true;
-                    setState(() {});
-                    Navigator.pop(context);
-                  },
-                  child: CircleAvatar(
-                    backgroundColor: Colors.green,
-                    child: Icon(
-                      Icons.call,
-                      color: Colors.white,
-                    ),
+            builder: (context) {
+              Future.delayed(Duration(seconds: 20), () {
+                pauseMusic();
+                Navigator.pop(context);
+              });
+              return AlertDialog(
+                backgroundColor: Colors.blue,
+                content: Text(
+                  'Blind User is Calling ...',
+                  style: TextStyle(
+                    fontSize: 20.0,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
-                CupertinoDialogAction(
-                  onPressed: () {
-                    changer = false;
-                    setState(() {});
-                    Navigator.pop(context);
-                  },
-                  child: CircleAvatar(
-                    backgroundColor: Colors.red,
-                    child: Icon(
-                      Icons.call_end,
-                      color: Colors.white,
+                actions: [
+                  CupertinoDialogAction(
+                    onPressed: () {
+                      isBusy = true;
+                      _setRemoteDescription(blindSdp);
+                      _createAnswer();
+                      changer = true;
+                      pauseMusic();
+                      setState(() {});
+                      Navigator.pop(context);
+
+                    },
+                    child: CircleAvatar(
+                      backgroundColor: Colors.green,
+                      child: Icon(
+                        Icons.call,
+                        color: Colors.white,
+
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            barrierDismissible: false,
-          );
+                  CupertinoDialogAction(
+                    onPressed: () {
+                      changer = false;
+                      pauseMusic();
+                      setState(() {});
+                      Navigator.pop(context);
+                    },
+                    child: CircleAvatar(
+                      backgroundColor: Colors.red,
+                      child: Icon(
+                        Icons.call_end,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            });
+        
         }
+
+        socket.on("server: other volunteer accepted call", (_) {
+          if (!isBusy) {
+            pauseMusic();
+            Navigator.pop(context);
+          }
+        });
+      });
+      socket.on("server: blind Call ended", (_) {
+        pauseMusic();
+        Navigator.pop(context);
       });
     });
   }
+
+  void handleBlindCloseCall() {}
 
   _createPeerConnection() async {
     Map<String, dynamic> configuration = {
@@ -443,7 +490,9 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
             child: IconButton(
               color: Colors.black,
               onPressed: () {
+                socket.emit("volunteer: Call ended", _blindId);
                 Navigator.pop(context);
+
                 setState(() {});
               },
               icon: Icon(

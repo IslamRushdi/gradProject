@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -22,6 +23,7 @@ class CallScreenBlind extends StatefulWidget {
 class _CallScreenBlindState extends State<CallScreenBlind> {
   String? blindId;
   String? roomId;
+  String? VolunteerID;
 
   bool _offer = false;
   RTCPeerConnection? _peerConnection;
@@ -30,16 +32,30 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
   RTCVideoRenderer _remoteRenderer = new RTCVideoRenderer();
 
   late Socket socket;
-
+  bool timeout = true;
   FlutterTts flutterTts = FlutterTts();
+
+  AudioPlayer audioPlayer = AudioPlayer();
+  PlayerState playerState = PlayerState.PAUSED;
+  AudioCache? audioCache;
+  String path = 'app_running.mp3';
+
+  playMusic() async {
+    await audioCache?.loop(path);
+  }
+
+  pauseMusic() async {
+    await audioPlayer.pause();
+  }
 
   @override
   dispose() {
     _localRenderer.dispose();
     _remoteRenderer.dispose();
-
     socket.disconnect();
-
+    audioPlayer.release();
+    audioPlayer.dispose();
+    audioCache?.clearAll();
     super.dispose();
   }
 
@@ -51,6 +67,12 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
       _peerConnection = pc;
     });
     initTts();
+    audioCache = AudioCache(fixedPlayer: audioPlayer);
+    audioPlayer.onPlayerStateChanged.listen((PlayerState s) {
+      setState(() {
+        playerState = s;
+      });
+    });
     super.initState();
   }
 
@@ -79,6 +101,11 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
       print("connected to server with id:$blindId");
 
       print("isBlind: ${widget.isBlind}");
+
+      socket.on('server: Call ended', (_) {
+        print("volunteer closed");
+        Navigator.pop(context);
+      });
     });
   }
 
@@ -142,12 +169,28 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
     _offer = true;
     _peerConnection!.setLocalDescription(description);
     _handleReceivingVolunteerCandidate();
-    socket.on('Volunteer: Close Call', (_) {
-      dispose();
-      setState(() {
-        initState();
-      });
-    });
+    playMusic();
+    timeout = false;
+    showDialog(
+        context: context,
+        builder: (context) {
+          Future.delayed(Duration(seconds: 20), () {
+            pauseMusic();
+            timeout = true;
+            Navigator.pop(context);
+          });
+          return AlertDialog(
+            title: Text(
+              'waiting for Volunteer to answer',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20.0,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: Colors.blue,
+          );
+        });
   }
 
   void _handleReceivingNoVolunteerFound() {
@@ -160,11 +203,12 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
 
   void _handleReceivingVolunteerCandidate() {
     socket.on('server: send volunteer candidate and sdp',
-        (volunteerCandidateAndSdp) async {
+        (volunteerInformation) async {
       Map<String, dynamic> volunteerCandidate =
-          volunteerCandidateAndSdp['candidate'] as Map<String, dynamic>;
+          volunteerInformation['candidate'] as Map<String, dynamic>;
 
-      String volunteerSdp = volunteerCandidateAndSdp['sdp'] as String;
+      String volunteerSdp = volunteerInformation['sdp'] as String;
+      VolunteerID = volunteerInformation['id'];
 
       RTCIceCandidate candidate = new RTCIceCandidate(
         volunteerCandidate['candidate'],
@@ -176,7 +220,10 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
       print('Remote sdp is set');
       await _peerConnection!.addCandidate(candidate);
       print('candidate is set');
-      // socket.disconnect();
+      if (!timeout) {
+        Navigator.pop(context);
+        pauseMusic();
+      }
     });
   }
 
@@ -211,17 +258,6 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
               child: new RTCVideoView(_remoteRenderer)),
         ),
       ]));
-
-  Row offerAndAnswerButtons() =>
-      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-        ElevatedButton(
-          onPressed: () {
-            _createOffer();
-          },
-          child: Text('Start Call'),
-          style: ElevatedButton.styleFrom(primary: Colors.green),
-        ),
-      ]);
 
   bool isMuted = false;
   bool isDeafened = false;
@@ -322,78 +358,126 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
   }
 
   void _smallDispose() {
-    // _localRenderer.dispose();
-    // _remoteRenderer.dispose();
-    // socket.disconnect();
-    // setState(() {});
-    // changer = false;
-    // initRenderer();
-    // _initSocketConnection();
-    // _createPeerConnection().then((pc) {
-    //   _peerConnection = pc;
-    // });
-    // initTts();
+    socket.emit("blind: Call ended", VolunteerID);
     Navigator.pop(context);
-    // setState(() {
-    //   changer = false;
-    //   _remoteRenderer.srcObject = null;
-    // });
   }
 
   bool changer = false;
 
-  Row blindCallState() => Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          CircleAvatar(
-            key: Key('Mute Operator'),
-            backgroundColor: Colors.black,
-            child: Icon(
-              muted,
-              color: colorMuted,
-            ),
-          ),
-          CircleAvatar(
-            key: Key('Deafen Operator'),
-            backgroundColor: Colors.black,
-            child: Icon(
-              deafened,
-              color: colorDeafen,
-            ),
-          ),
-          CircleAvatar(
-            key: Key('Camera Operator'),
-            backgroundColor: Colors.black,
-            child: Icon(
-              whichCamera,
-              color: Colors.white,
-            ),
-          ),
-          CircleAvatar(
-            key: Key('VideoOff Operator'),
-            backgroundColor: Colors.black,
-            child: Icon(
-              videoOff,
-              color: colorVideoOff,
-            ),
-          ),
-          CircleAvatar(
-            key: Key('Close Call Operator'),
-            backgroundColor: Colors.black,
-            child: Icon(
-              Icons.call_end,
-              color: Colors.red,
-            ),
-          ),
-        ],
-      );
-
-  Row blindProperties() {
+  Column blindProperties() {
     if (changer)
       return blindCallState();
     else
-      return offerAndAnswerButtons();
+      return offerState();
   }
+
+  Column blindCallState() => Column(
+        children: [
+          GestureDetector(
+            onTap: () {
+              _mute();
+              print('Mute is Pressed');
+              if (isMuted)
+                _speak('Mic off');
+              else
+                _speak('Mic on');
+            },
+            onDoubleTap: () {
+              _deafen();
+              print('Deafen is pressed');
+              if (isDeafened)
+                _speak('Speakers off');
+              else
+                _speak('Speakers on');
+            },
+            onLongPress: () {
+              print('Close Call');
+              _speak('Closing  call');
+              _smallDispose();
+              setState(() {});
+            },
+            // onVerticalDragEnd: (Details){
+            //   print('Switch Camera');
+            //   _speak('Switching camera');
+            //   _switchCamera();
+            // },
+            onHorizontalDragEnd: (Details) {
+              print('Video Off');
+              _videoOff();
+              if (isVideoOff)
+                _speak('Video off');
+              else
+                _speak('Video on');
+            },
+
+            child: videoRenderers(),
+          ),
+          SizedBox(
+            height: 30.0,
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              CircleAvatar(
+                key: Key('Mute Operator'),
+                backgroundColor: Colors.black,
+                child: Icon(
+                  muted,
+                  color: colorMuted,
+                ),
+              ),
+              CircleAvatar(
+                key: Key('Deafen Operator'),
+                backgroundColor: Colors.black,
+                child: Icon(
+                  deafened,
+                  color: colorDeafen,
+                ),
+              ),
+              CircleAvatar(
+                key: Key('Camera Operator'),
+                backgroundColor: Colors.black,
+                child: Icon(
+                  whichCamera,
+                  color: Colors.white,
+                ),
+              ),
+              CircleAvatar(
+                key: Key('VideoOff Operator'),
+                backgroundColor: Colors.black,
+                child: Icon(
+                  videoOff,
+                  color: colorVideoOff,
+                ),
+              ),
+              CircleAvatar(
+                key: Key('Close Call Operator'),
+                backgroundColor: Colors.black,
+                child: Icon(
+                  Icons.call_end,
+                  color: Colors.red,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+  Column offerState() => Column(
+        children: [
+          GestureDetector(
+            onLongPress: () {
+              print('Blind Calling Other Volunteers');
+              _speak('Starting Call');
+              _createOffer();
+              setState(() {});
+            },
+            child: videoRenderers(),
+          ),
+          SizedBox(
+            height: 30.0,
+          ),
+        ],
+      );
 
   Future _speak(String wordsToSay) async {
     await flutterTts.speak(wordsToSay);
@@ -405,55 +489,7 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
       appBar: AppBar(
         title: Text('Video Conference'),
       ),
-      body: Container(
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: () {
-                _mute();
-                print('Mute is Pressed');
-                if (isMuted)
-                  _speak('Mic off');
-                else
-                  _speak('Mic on');
-              },
-              onDoubleTap: () {
-                _deafen();
-                print('Deafen is pressed');
-                if (isDeafened)
-                  _speak('Speakers off');
-                else
-                  _speak('Speakers on');
-              },
-              onLongPress: () {
-                print('Close Call');
-                _speak('Closing  call');
-                _smallDispose();
-                setState(() {});
-              },
-              // onVerticalDragEnd: (Details){
-              //   print('Switch Camera');
-              //   _speak('Switching camera');
-              //   _switchCamera();
-              // },
-              onHorizontalDragEnd: (Details) {
-                print('Video Off');
-                _videoOff();
-                if (isVideoOff)
-                  _speak('Video off');
-                else
-                  _speak('Video on');
-              },
-
-              child: videoRenderers(),
-            ),
-            SizedBox(
-              height: 30.0,
-            ),
-            blindProperties(),
-          ],
-        ),
-      ),
+      body: blindProperties(),
     );
   }
 }
