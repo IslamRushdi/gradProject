@@ -24,6 +24,10 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
   String? blindId;
   String? roomId;
   String? VolunteerID;
+  String? blindSdp;
+
+  int callRetries = 0;
+  bool inCall =false;
 
   bool _offer = false;
   RTCPeerConnection? _peerConnection;
@@ -163,7 +167,7 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
 
     RTCSessionDescription description =
         await _peerConnection!.createOffer({'offerToReceiveVideo': 1});
-    String blindSdp = description.sdp!;
+    blindSdp = description.sdp!;
     socket.emit("blind: send sdp", blindSdp);
     print("sending sdp...");
     _offer = true;
@@ -177,25 +181,42 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
           Future.delayed(Duration(seconds: 20), () {
             pauseMusic();
             timeout = true;
+            if (callRetries == 0 && !inCall) {
+              _createOffer();
+              callRetries++;
+            } else {
+              callRetries == 0;
+            }
             Navigator.pop(context);
+            _speak('No volunteer available');
           });
           return AlertDialog(
             title: Text(
               'waiting for Volunteer to answer',
               style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 20.0,
-                color: Colors.white,
-              ),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20.0,
+                  color: Colors.white),
             ),
-            backgroundColor: Colors.blue,
+            backgroundColor: Colors.grey.shade200.withOpacity(0.3),
           );
         });
   }
 
   void _handleReceivingNoVolunteerFound() {
     socket.on("server: no volunteer found", (_) {
-      showSnackBar(context, "No volunteer found");
+      if (callRetries < 3) {
+        Future.delayed(Duration(seconds: 5), () {
+          socket.emit("blind: send sdp", blindSdp);
+        });
+        callRetries++;
+      } else if (callRetries >= 3) {
+        callRetries = 0;
+        Navigator.pop(context);
+        pauseMusic();
+        _speak('No volunteer found please try again later');
+        setState(() {});
+      }
     });
     changer = false;
     setState(() {});
@@ -209,7 +230,7 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
 
       String volunteerSdp = volunteerInformation['sdp'] as String;
       VolunteerID = volunteerInformation['id'];
-
+      inCall = true;
       RTCIceCandidate candidate = new RTCIceCandidate(
         volunteerCandidate['candidate'],
         volunteerCandidate['sdpMid'],
@@ -220,7 +241,9 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
       print('Remote sdp is set');
       await _peerConnection!.addCandidate(candidate);
       print('candidate is set');
+
       if (!timeout) {
+        callRetries = 0;
         Navigator.pop(context);
         pauseMusic();
       }

@@ -26,6 +26,7 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
   String? _blindId;
   String? _volunteerId;
   bool isBusy = false;
+  bool receivingCall = false;
   bool changer = false;
   String? _volunteerSdp;
   Map<String, dynamic>? _firstCandidate;
@@ -42,7 +43,6 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
   PlayerState playerState = PlayerState.PAUSED;
   AudioCache? audioCache;
   String path = 'app_running.mp3';
-  
 
   playMusic() async {
     await audioCache?.loop(path);
@@ -102,79 +102,84 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
       socket
           .on("server: send blind connection to all volunteers to create offer",
               (blindData) {
-        blindData = blindData as Map<String, dynamic>;
-        final String blindSdp = blindData['sdp']! as String;
-        _blindId = blindData['id']! as String;
+        if (!receivingCall) {
+          blindData = blindData as Map<String, dynamic>;
+          final String blindSdp = blindData['sdp']! as String;
+          _blindId = blindData['id']! as String;
 
-        // print("blindSdp: $blindSdp");
-        //print("id: $_blindId");
-        print('recieving sdp');
+          // print("blindSdp: $blindSdp");
+          //print("id: $_blindId");
+          print('recieving sdp');
 
-        if (!isBusy) {
-        playerState == PlayerState.PLAYING;
-        playMusic();
-        showDialog(
-            context: context,
-            builder: (context) {
-              Future.delayed(Duration(seconds: 20), () {
-                pauseMusic();
-                Navigator.pop(context);
-              });
-              return AlertDialog(
-                backgroundColor: Colors.blue,
-                content: Text(
-                  'Blind User is Calling ...',
-                  style: TextStyle(
-                    fontSize: 20.0,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                actions: [
-                  CupertinoDialogAction(
-                    onPressed: () {
-                      isBusy = true;
-                      _setRemoteDescription(blindSdp);
-                      _createAnswer();
-                      changer = true;
-                      pauseMusic();
-                      setState(() {});
-                      Navigator.pop(context);
-
-                    },
-                    child: CircleAvatar(
-                      backgroundColor: Colors.green,
-                      child: Icon(
-                        Icons.call,
-                        color: Colors.white,
-
-                      ),
-                    ),
-                  ),
-                  CupertinoDialogAction(
-                    onPressed: () {
-                      changer = false;
-                      pauseMusic();
-                      setState(() {});
-                      Navigator.pop(context);
-                    },
-                    child: CircleAvatar(
-                      backgroundColor: Colors.red,
-                      child: Icon(
-                        Icons.call_end,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            });
-        
-        }
-
-        socket.on("server: other volunteer accepted call", (_) {
           if (!isBusy) {
+            receivingCall = true;
+            playerState == PlayerState.PLAYING;
+            playMusic();
+            showDialog(
+                context: context,
+                builder: (context) {
+                  Future.delayed(Duration(seconds: 20), () {
+                    pauseMusic();
+                    Navigator.pop(context);
+                    receivingCall = false;
+                    setState(() {});
+                  });
+                  return AlertDialog(
+                    backgroundColor: Colors.grey.shade200.withOpacity(0.3),
+                    content: Text(
+                      'Blind User is Calling ...',
+                      style: TextStyle(
+                        fontSize: 20.0,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    actions: [
+                      CupertinoDialogAction(
+                        onPressed: () {
+                          isBusy = true;
+                          receivingCall = false;
+                          _setRemoteDescription(blindSdp);
+                          _createAnswer();
+                          socket.emit('Volunteer: accepted call');
+                          changer = true;
+                          pauseMusic();
+                          setState(() {});
+                          Navigator.pop(context);
+                        },
+                        child: CircleAvatar(
+                          backgroundColor: Colors.green,
+                          child: Icon(
+                            Icons.call,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      CupertinoDialogAction(
+                        onPressed: () {
+                          changer = false;
+                          receivingCall = false;
+                          pauseMusic();
+                          setState(() {});
+                          Navigator.pop(context);
+                        },
+                        child: CircleAvatar(
+                          backgroundColor: Colors.red,
+                          child: Icon(
+                            Icons.call_end,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                });
+          }
+        }
+        socket.on("server: other volunteer accepted call", (_) {
+          if (!isBusy && receivingCall) {
             pauseMusic();
+            receivingCall = false;
             Navigator.pop(context);
           }
         });
@@ -384,13 +389,13 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
     setState(() {});
   }
 
-  void _smallDispose() {
-    setState(() {
-      isBusy = false;
-      changer = false;
-      _remoteRenderer.srcObject = null;
-    });
-  }
+  // void _smallDispose() {
+  //   setState(() {
+  //     isBusy = false;
+  //     changer = false;
+  //     _remoteRenderer.srcObject = null;
+  //   });
+  // }
 
   SizedBox videoRenderers() => SizedBox(
       height: 500,
@@ -492,7 +497,6 @@ class _CallScreenVolunteerState extends State<CallScreenVolunteer> {
               onPressed: () {
                 socket.emit("volunteer: Call ended", _blindId);
                 Navigator.pop(context);
-
                 setState(() {});
               },
               icon: Icon(
