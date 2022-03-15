@@ -27,7 +27,7 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
   String? blindSdp;
 
   int callRetries = 0;
-  bool inCall =false;
+  bool inCall = false;
 
   bool _offer = false;
   RTCPeerConnection? _peerConnection;
@@ -182,13 +182,13 @@ class _CallScreenBlindState extends State<CallScreenBlind> {
             pauseMusic();
             timeout = true;
             if (callRetries == 0 && !inCall) {
-              _createOffer();
               callRetries++;
+              _createOffer();
             } else {
-              callRetries == 0;
+              callRetries = 0;
+              Navigator.pop(context);
+              _speak('No volunteer available please try again in a few seconds');
             }
-            Navigator.pop(context);
-            _speak('No volunteer available');
           });
           return AlertDialog(
             title: Text(
